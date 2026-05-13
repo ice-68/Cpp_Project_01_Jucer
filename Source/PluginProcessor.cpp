@@ -22,10 +22,15 @@ _01AudioProcessor::_01AudioProcessor()
                        )
 #endif
 {
+    dspInstances.push_back(&phaser);
+    dspInstances.push_back(&chorus);
+    dspInstances.push_back(&overdrive);
+    dspInstances.push_back(&ladderFilter);
 }
 
 _01AudioProcessor::~_01AudioProcessor()
 {
+
 }
 
 //==============================================================================
@@ -93,8 +98,15 @@ void _01AudioProcessor::changeProgramName (int index, const juce::String& newNam
 //==============================================================================
 void _01AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sampleRate;
+    spec.maximumBlockSize = juce::uint32(samplesPerBlock);
+    spec.numChannels = juce::uint32(getTotalNumOutputChannels());
+
+    for (auto* ptr : dspInstances)
+    {
+        ptr->prepare(spec); // 这里的 spec 就不报错了
+    }
 }
 
 void _01AudioProcessor::releaseResources()
@@ -131,31 +143,14 @@ bool _01AudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) cons
 
 void _01AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
-    juce::ScopedNoDenormals noDenormals;
-    auto totalNumInputChannels  = getTotalNumInputChannels();
-    auto totalNumOutputChannels = getTotalNumOutputChannels();
+    juce::dsp::AudioBlock<float> block(buffer);
+    juce::dsp::ProcessContextReplacing<float> context(block);
 
-    // In case we have more outputs than inputs, this code clears any output
-    // channels that didn't contain input data, (because these aren't
-    // guaranteed to be empty - they may contain garbage).
-    // This is here to avoid people getting screaming feedback
-    // when they first compile a plugin, but obviously you don't need to keep
-    // this code if your algorithm always overwrites all the output channels.
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear (i, 0, buffer.getNumSamples());
-
-    // This is the place where you'd normally do the guts of your plugin's
-    // audio processing...
-    // Make sure to reset the state if your inner loop is processing
-    // the samples and the outer loop is handling the channels.
-    // Alternatively, you can process the samples with the channels
-    // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    for (auto* ptr : dspInstances)
     {
-        auto* channelData = buffer.getWritePointer (channel);
-
-        // ..do something to the data...
+        ptr->process(context); // 这里的 context 也不报错了
     }
+  
 }
 
 //==============================================================================
